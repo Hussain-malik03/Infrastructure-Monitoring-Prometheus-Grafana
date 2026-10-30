@@ -1,0 +1,105 @@
+# =====================================================================
+# Prometheus configuration (sanitized)
+# Runs on a Windows application server alongside Grafana.
+# All IPs are placeholders; host roles are kept so the layout is clear.
+# =====================================================================
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  # scrape_timeout defaults to 10s
+
+# Alert rules evaluated by Prometheus (see rules/infrastructure-alerts.yml).
+rule_files:
+  - "rules/*.yml"
+
+# Uncomment once an Alertmanager is deployed; Grafana alerting is used meanwhile.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['<ALERTMANAGER_HOST>:9093']
+
+scrape_configs:
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # -------------------------------------------------------------------
+  # Windows hosts: windows_exporter (:9182)
+  # site = PR | DR | STG, role = app | db | lb | devops
+  # -------------------------------------------------------------------
+  - job_name: "windows"
+    static_configs:
+      - targets: ['localhost:9182']
+        labels: { instance: 'DR App Server',      site: 'DR',  role: 'app' }
+      - targets: ['<PR_APP_IP>:9182']
+        labels: { instance: 'PR App Server',      site: 'PR',  role: 'app' }
+      - targets: ['<PR_LB_IP>:9182']
+        labels: { instance: 'PR LB Server',       site: 'PR',  role: 'lb' }
+      - targets: ['<STG_APP_IP>:9182']
+        labels: { instance: 'Staging Server',     site: 'STG', role: 'app' }
+      - targets: ['<DEVOPS_IP>:9182']
+        labels: { instance: 'Azure DevOps Server', site: 'PR', role: 'devops' }
+      - targets: ['<DR_DB_IP>:9182']
+        labels: { instance: 'DR Database',        site: 'DR',  role: 'db' }
+      - targets: ['<DB_A_IP>:9182']
+        labels: { instance: 'DB-A',               site: 'PR',  role: 'db' }
+      - targets: ['<DB_B_IP>:9182']
+        labels: { instance: 'DB-B',               site: 'PR',  role: 'db' }
+
+  # -------------------------------------------------------------------
+  # SQL Server: sql_exporter (one exporter instance per DB host / port)
+  # Kept in its own job so `up` series never collide with windows_exporter
+  # on the same host.
+  # -------------------------------------------------------------------
+  - job_name: "mssql"
+    static_configs:
+      - targets: ['<DR_DB_IP>:9399']
+        labels: { instance: 'DR Database', site: 'DR', role: 'db' }
+      - targets: ['<DB_A_IP>:9978']
+        labels: { instance: 'DB-A',        site: 'PR', role: 'db' }
+      - targets: ['<DB_B_IP>:9979']
+        labels: { instance: 'DB-B (1)',    site: 'PR', role: 'db' }
+      - targets: ['<DB_B_IP>:9980']
+        labels: { instance: 'DB-B (2)',    site: 'PR', role: 'db' }
+
+  # -------------------------------------------------------------------
+  # Linux load balancer (Nginx): node_exporter (:9100)
+  # Scraped over a private/VPN path or protected by firewall allow-list.
+  # -------------------------------------------------------------------
+  - job_name: "linux"
+    static_configs:
+      - targets: ['<NGINX_LB_IP>:9100']
+        labels: { instance: 'Nginx Load Balancer', site: 'PR', role: 'lb' }
+
+  # -------------------------------------------------------------------
+  # Redis (Sentinel nodes): redis_exporter (:9121)
+  # -------------------------------------------------------------------
+  - job_name: "redis"
+    static_configs:
+      - targets: ['<DR_REDIS_IP>:9121']
+        labels: { instance: 'DR Redis', site: 'DR' }
+      - targets: ['<PR_APP_IP>:9121']
+        labels: { instance: 'PR Redis', site: 'PR' }
+
+  # -------------------------------------------------------------------
+  # RabbitMQ: built-in rabbitmq_prometheus plugin (:15692), no exporter
+  # -------------------------------------------------------------------
+  - job_name: "rabbitmq"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:15692']
+        labels: { instance: 'DR RabbitMQ', site: 'DR' }
+      - targets: ['<PR_APP_IP>:15692']
+        labels: { instance: 'PR RabbitMQ', site: 'PR' }
+
+  # Per-queue depth and consumer counts
+  - job_name: "rabbitmq_detailed"
+    metrics_path: /metrics/detailed
+    params:
+      family: ['queue_coarse_metrics', 'queue_consumer_count']
+    static_configs:
+      - targets: ['localhost:15692']
+        labels: { instance: 'DR RabbitMQ', site: 'DR' }
+      - targets: ['<PR_APP_IP>:15692']
+        labels: { instance: 'PR RabbitMQ', site: 'PR' }

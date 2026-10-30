@@ -1,0 +1,17 @@
+collectors:
+  enabled: "cpu,memory,pagefile,logical_disk,net,os,service,system,time,diskdrive,process"
+collector:
+  service:
+    include: "windows_exporter"
+  process:
+    include: ".+"
+  scheduled_task:
+    include: "Microsoft.+"
+log:
+  level: info
+scrape:
+  timeout-margin: 0.5
+telemetry:
+  path: /metrics
+web:
+  listen-address: ":9182"
